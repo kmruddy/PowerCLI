@@ -8,6 +8,7 @@ History:
 
 #If statement to check if there is a vCenter connection already established
 if (!($global:DefaultVIServer)) {Write-Warning "No vCenter Connection found. Connect to a vCenter and try running the script again."}
+elseif ($global:DefaultVIServer.IsConnected -eq $false) {Write-Warning "vCenter is not currently connected. Please re-connect the vCenter and try running the script again."}
 else {
 #If statement to check whether or not the vpxd.quickStats.HostStatsCheck setting exists. If so, it sets the option to false. If not, it creates the parameter.
 if (Get-AdvancedSetting -Entity $global:DefaultVIServer -Name "config.vpxd.quickStats.HostStatsCheck") {Get-AdvancedSetting -Entity $global:DefaultVIServer -Name "config.vpxd.quickStats.HostStatsCheck" | Set-AdvancedSetting -Value $false -Confirm:$false | Out-Null}
