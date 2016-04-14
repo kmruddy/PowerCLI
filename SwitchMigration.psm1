@@ -37,12 +37,11 @@ function Move-VMHostToDVS {
         else {
 	        $vmh = Get-VMHost -Name $vmhost
             $vss = $vmh | Get-VirtualSwitch -Name $vsswitch -Standard -ErrorAction SilentlyContinue
-            $vmks = $vss | Get-VirtualPortGroup | ?{$_.Port -like "host"}
+            $vmkpgs = $vss | Get-VirtualPortGroup | ?{$_.Port -like "host"}
             if (!$vmh) {
                 Write-Warning "$vmhost - VMHost can't be found."}
             elseif (!$vmh) {Write-Warning "$vmhost - VMHost can't be found."}
             elseif ($vss.nic.count -lt 2) {Write-Warning "$vss - $vmhost has less than 2 uplinks."}
-            elseif ($vmks) {Write-Warning "$vss - Contains vmkernel ports for $vmhost"}
             else {
             
                 $activenics = $vss.ExtensionData.Spec.Policy.NicTeaming.NicOrder.ActiveNic
@@ -58,7 +57,7 @@ function Move-VMHostToDVS {
                 elseif ($stbynics.count -gt 1) {Add-VDSwitchPhysicalNetworkAdapter -DistributedSwitch $dvs -VMHostPhysicalNic (Get-VMHostNetworkAdapter -VMHost $vmh -Physical -Name ($stbynics | select -last 1)) -Confirm:$false}
                 else {Add-VDSwitchPhysicalNetworkAdapter -DistributedSwitch $dvs -VMHostPhysicalNic (Get-VMHostNetworkAdapter -VMHost $vmh -Physical -Name ($stbynics)) -Confirm:$false}
             
-                $vspgs = $vss | Get-VirtualPortGroup -Standard
+                $vspgs = $vss | Get-VirtualPortGroup | ?{$_.Port -notlike "host"}
                 foreach ($pg in $vspgs) {
                     $vdpg = $null
 
@@ -72,6 +71,64 @@ function Move-VMHostToDVS {
 
                 }
             
+                foreach ($vmkpg in $vmkpgs) {
+                    $vmk = $vmkpg | Get-VMHostNetworkAdapter
+                    if ($vmkpg.VLanId -eq 0) {
+                        $dvpg = $dvs | Get-VDPortgroup | ?{$_.VlanConfiguration -eq $null -and $_.IsUplink -eq $false}
+                        if ($dvpg -is [System.Array]) {
+                            #Multiple portgroups with a common VLAN was detected. Prompting user for a choice.
+                            Write-Host "`nDistributed PortGroup selection."
+                            $rmenu = @{}
+                            for ($i=1;$i -le $dvpg.count; $i++) {
+                                Write-Host "$i. $($dvpg[$i-1].name)"
+                                $rmenu.Add($i,($dvpg[$i-1].name))
+                                }
+                            $vmkname = $vmk.Name
+                            [int]$rans = Read-Host "Enter desired portgroup for $vmkname"
+                            if ($rans -eq '0' -or $rans -gt $i) {Write-Host -ForegroundColor Red  -Object "Invalid selection.`n";Exit}
+                            $rselection = $rmenu.Item($rans)
+                            $dvpg = $dvs | Get-VDPortgroup -Name $rselection
+                            }
+                        elseif (!$dvpg) {New-VDPortgroup -VDSwitch $dvs -Name $vmkpg.Name -VlanId $vmkpg.vlanid -Confirm:$false | Out-Null; $dvpg = $dvs | Get-VDPortgroup -Name $vmkpg.Name}
+                        $vmk | Set-VMHostNetworkAdapter -PortGroup $dvpg -Confirm:$false | Out-Null}
+                    elseif ($vmkpg.VLanId -eq 4095) {
+                        $dvpg = $dvs | Get-VDPortgroup | ?{$_.VlanConfiguration.VlanType -eq "Trunk" -and $_.IsUplink -eq $false}
+                        if ($dvpg -is [System.Array]) {
+                            #Multiple portgroups with a common VLAN was detected. Prompting user for a choice.
+                            Write-Host "`nDistributed PortGroup selection."
+                            $rmenu = @{}
+                            for ($i=1;$i -le $dvpg.count; $i++) {
+                                Write-Host "$i. $($dvpg[$i-1].name)"
+                                $rmenu.Add($i,($dvpg[$i-1].name))
+                                }
+                            $vmkname = $vmk.Name
+                            [int]$rans = Read-Host "Enter desired portgroup for $vmkname"
+                            if ($rans -eq '0' -or $rans -gt $i) {Write-Host -ForegroundColor Red  -Object "Invalid selection.`n";Exit}
+                            $rselection = $rmenu.Item($rans)
+                            $dvpg = $dvs | Get-VDPortgroup -Name $rselection
+                            }
+                        elseif (!$dvpg) {New-VDPortgroup -VDSwitch $dvs -Name $vmkpg.Name -VlanTrunkRange "1-4094" -Confirm:$false | Out-Null; $dvpg = $dvs | Get-VDPortgroup -Name $vmkpg.Name}
+                        $vmk | Set-VMHostNetworkAdapter -PortGroup $dvpg -Confirm:$false | Out-Null}
+                    else {
+                        $dvpg = $dvs | Get-VDPortgroup | ?{$_.VlanConfiguration.VlanId -eq $vmkpg.vlanid -and $_.IsUplink -eq $false}
+                        if ($dvpg -is [System.Array]) {
+                            #Multiple portgroups with a common VLAN was detected. Prompting user for a choice.
+                            Write-Host "`nDistributed PortGroup selection."
+                            $rmenu = @{}
+                            for ($i=1;$i -le $dvpg.count; $i++) {
+                                Write-Host "$i. $($dvpg[$i-1].name)"
+                                $rmenu.Add($i,($dvpg[$i-1].name))
+                                }
+                            $vmkname = $vmk.Name
+                            [int]$rans = Read-Host "Enter desired portgroup for $vmkname"
+                            if ($rans -eq '0' -or $rans -gt $i) {Write-Host -ForegroundColor Red  -Object "Invalid selection.`n";Exit}
+                            $rselection = $rmenu.Item($rans)
+                            $dvpg = $dvs | Get-VDPortgroup -Name $rselection
+                            }
+                        elseif (!$dvpg) {New-VDPortgroup -VDSwitch $dvs -Name $vmkpg.Name -VlanId $vmkpg.vlanid -Confirm:$false | Out-Null; $dvpg = $dvs | Get-VDPortgroup -Name $vmkpg.Name}
+                        $vmk | Set-VMHostNetworkAdapter -PortGroup $dvpg -Confirm:$false | Out-Null}
+                }
+
                 $oldvss = Get-VirtualSwitch -Name $vss.Name -VMHost $vmh -Standard
                 $oldactivenics = $oldvss.ExtensionData.Spec.Policy.NicTeaming.NicOrder.ActiveNic
                 $oldstbynics = $oldvss.ExtensionData.Spec.Policy.NicTeaming.NicOrder.StandbyNic
@@ -102,7 +159,7 @@ function Move-VMHostToVSS {
 	The name of the distributed virtual switch 
 
 .EXAMPLE
-	PS> Move-VMHostToVSS -vmhost vmhost01 -dvs vSwitch1
+	PS> Move-VMHostToVSS -vmhost vmhost01 -dvswitch vSwitch1
 #>
 [CmdletBinding()] 
 	param(
@@ -147,8 +204,8 @@ function Move-VMHostToVSS {
                     $vss | New-VirtualPortGroup -Name $pg.Name -VLanId $pg.VlanConfiguration.VlanId -Confirm:$false | Out-Null}
                 elseif ($pg.VlanConfiguration.VlanType -eq "Trunk") {$vss | New-VirtualPortGroup -Name $pg.Name -VLanId 4095 -Confirm:$false | Out-Null}
                 else {$vss | New-VirtualPortGroup -Name $pg.Name -Confirm:$false | Out-Null}
-                Start-Sleep -Seconds 5
-                $vspg = $vss | Get-VirtualPortGroup -Name $pg.Name -Standard
+                Start-Sleep -Seconds 2
+                $vspg = $vmh | Get-VirtualSwitch -Name $vss -Standard | Get-VirtualPortGroup -Name $pg.Name -Standard | ?{$_.Key -like "key-vim.host.PortGroup-*"}
                 $pg | Get-NetworkAdapter | ?{$_.parent.VMHost -eq $vmh} | Set-NetworkAdapter -Portgroup $vspg -Confirm:$false | Out-Null
             
             }
