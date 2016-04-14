@@ -20,7 +20,8 @@ function Move-VMHostToDVS {
 #>
 [CmdletBinding()] 
 	param(
-		[Parameter(Mandatory=$true,Position=0)]
+		[Parameter(Mandatory=$true,Position=0,ValueFromPipelineByPropertyName=$true)]
+        [Alias('Name')]
 		[String]$vmhost,
 		[Parameter(Mandatory=$true,Position=1)]
 		[String]$vsswitch
@@ -28,22 +29,27 @@ function Move-VMHostToDVS {
 
 	Process {
 
+    $modules = Get-Module
+    if (!($modules | ?{$_.Name -like "VMware*"})) {Write-Warning "PowerCLI not found, please initialize PowerCLI.";exit}
+    elseif ((Get-Module -Name VMware.VimAutomation.Vds).Version.Major -lt 6) {Write-Warning "PowerCLI Version 6.0 not found, please upgrade.";exit}
+    elseif (!($global:DefaultVIServer) -or $global:DefaultVIServer.IsConnected -eq $false) {Write-Warning "No active vCenter connection found, please connect to a vCenter.";exit}
+
 	$vmh = Get-VMHost -Name $vmhost
     $vss = $vmh | Get-VirtualSwitch -Name $vsswitch -Standard -ErrorAction SilentlyContinue
     if (!$vmh) {
         Write-Warning "$vmhost - VMHost can't be found.";exit}
     elseif (!$vmh) {Write-Warning "$vmhost - VMHost can't be found.";exit}
     elseif ($vss.nic.count -lt 2) {Write-Warning "$vss - $vmhost has less than 2 uplinks.";exit}
-    elseif ((Get-VDSwitch -Name $vsswitch -ErrorAction SilentlyContinue)) {Write-Warning "$vsswitch - a distributed switch of this name already exists.";exit}
     else {
-
             
             $activenics = $vss.ExtensionData.Spec.Policy.NicTeaming.NicOrder.ActiveNic
             $stbynics = $vss.ExtensionData.Spec.Policy.NicTeaming.NicOrder.StandbyNic
 
-            $dvs = New-VDSwitch -Name $vss.Name -Mtu $vss.Mtu -NumUplinkPorts ($vss.nic.count) -Location ($vmh | Get-Datacenter) -Confirm:$false
+            if (!(Get-VDSwitch -Name $vsswitch -ErrorAction SilentlyContinue)) {New-VDSwitch -Name $vss.Name -Mtu $vss.Mtu -NumUplinkPorts ($vss.nic.count) -Location ($vmh | Get-Datacenter) -Confirm:$false}
             
-            Add-VDSwitchVMHost -VMHost $vmh -VDSwitch $dvs -Confirm:$false
+            $dvs = $vmh | Get-VDSwitch -Name $vsswitch -ErrorAction SilentlyContinue
+            if (!$dvs) {Add-VDSwitchVMHost -VMHost $vmh -VDSwitch $dvs -Confirm:$false; $dvs = $vmh | Get-VDSwitch -Name $vsswitch -ErrorAction SilentlyContinue}
+                        
             if ($activenics.count -gt 1) {
                 Add-VDSwitchPhysicalNetworkAdapter -DistributedSwitch $dvs -VMHostPhysicalNic (Get-VMHostNetworkAdapter -VMHost $vmh -Physical -Name ($activenics | select -last 1)) -Confirm:$false}
             elseif ($stbynics.count -gt 1) {Add-VDSwitchPhysicalNetworkAdapter -DistributedSwitch $dvs -VMHostPhysicalNic (Get-VMHostNetworkAdapter -VMHost $vmh -Physical -Name ($stbynics | select -last 1)) -Confirm:$false}
@@ -53,9 +59,11 @@ function Move-VMHostToDVS {
             foreach ($pg in $vspgs) {
                 $vdpg = $null
 
-                if ($pg.VlanId -eq 4095) {
-                    New-VDPortgroup -VDSwitch $dvs -Name $pg.Name -VlanTrunkRange "1-4094" -Confirm:$false | Out-Null}
-                else {New-VDPortgroup -VDSwitch $dvs -Name $pg.Name -VlanId $pg.vlanid -Confirm:$false | Out-Null}
+                if (!($dvs | Get-VDPortgroup -Name $pg.Name)) {
+                    if ($pg.VlanId -eq 4095) {
+                        New-VDPortgroup -VDSwitch $dvs -Name $pg.Name -VlanTrunkRange "1-4094" -Confirm:$false | Out-Null}
+                    else {New-VDPortgroup -VDSwitch $dvs -Name $pg.Name -VlanId $pg.vlanid -Confirm:$false | Out-Null}
+                }
                 $vdpg = $dvs | Get-VDPortgroup -Name $pg.Name
                 $pg | Get-NetworkAdapter | Set-NetworkAdapter -Portgroup $vdpg -Confirm:$false | Out-Null
 
@@ -95,7 +103,8 @@ function Move-VMHostToVSS {
 #>
 [CmdletBinding()] 
 	param(
-		[Parameter(Mandatory=$true,Position=0)]
+		[Parameter(Mandatory=$true,Position=0,ValueFromPipelineByPropertyName=$true)]
+        [Alias('Name')]
 		[String]$vmhost,
 		[Parameter(Mandatory=$true,Position=1)]
 		[String]$dvswitch
@@ -103,7 +112,12 @@ function Move-VMHostToVSS {
 
 	Process {
 
-	$vmh = Get-VMHost -Name $vmhost
+    $modules = Get-Module
+    if (!($modules | ?{$_.Name -like "VMware*"})) {Write-Warning "PowerCLI not found, please initialize PowerCLI.";exit}
+    elseif ((Get-Module -Name VMware.VimAutomation.Vds).Version.Major -lt 6) {Write-Warning "PowerCLI Version 6.0 not found, please upgrade.";exit}
+    elseif (!($global:DefaultVIServer) -or $global:DefaultVIServer.IsConnected -eq $false) {Write-Warning "No active vCenter connection found, please connect to a vCenter.";exit}
+    
+    $vmh = Get-VMHost -Name $vmhost
     $dvs = $vmh | Get-VDSwitch -Name $dvswitch -ErrorAction SilentlyContinue
     if (!$vmh) {
         Write-Warning "$vmhost - VMHost can't be found.";exit}
@@ -127,9 +141,9 @@ function Move-VMHostToVSS {
                 $vss | New-VirtualPortGroup -Name $pg.Name -VLanId $pg.VlanConfiguration.VlanId -Confirm:$false | Out-Null}
             elseif ($pg.VlanConfiguration.VlanType -eq "Trunk") {$vss | New-VirtualPortGroup -Name $pg.Name -VLanId 4095 -Confirm:$false | Out-Null}
             else {$vss | New-VirtualPortGroup -Name $pg.Name -Confirm:$false | Out-Null}
-            Start-Sleep -Seconds 2
+            Start-Sleep -Seconds 5
             $vspg = $vss | Get-VirtualPortGroup -Name $pg.Name -Standard
-            $pg | Get-NetworkAdapter | Set-NetworkAdapter -Portgroup $vspg -Confirm:$false | Out-Null
+            $pg | Get-NetworkAdapter | ?{$_.parent.VMHost -eq $vmh} | Set-NetworkAdapter -Portgroup $vspg -Confirm:$false | Out-Null
             
         }
 
