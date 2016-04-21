@@ -129,13 +129,17 @@ function Move-VMHostToDVS {
                         $vmk | Set-VMHostNetworkAdapter -PortGroup $dvpg -Confirm:$false | Out-Null}
                 }
 
-                $oldvss = Get-VirtualSwitch -Name $vss.Name -VMHost $vmh -Standard
-                $oldactivenics = $oldvss.ExtensionData.Spec.Policy.NicTeaming.NicOrder.ActiveNic
-                $oldstbynics = $oldvss.ExtensionData.Spec.Policy.NicTeaming.NicOrder.StandbyNic
+                if ($vss | Get-VirtualPortGroup | Get-VM) {
+                    Write-Warning "$vmhost - VMs still remain on this host's VSS, please remediate manually."}
+                else {
+                    $oldvss = Get-VirtualSwitch -Name $vss.Name -VMHost $vmh -Standard
+                    $oldactivenics = $oldvss.ExtensionData.Spec.Policy.NicTeaming.NicOrder.ActiveNic
+                    $oldstbynics = $oldvss.ExtensionData.Spec.Policy.NicTeaming.NicOrder.StandbyNic
 
-                foreach ($avnic in $oldactivenics) {Add-VDSwitchPhysicalNetworkAdapter -DistributedSwitch $dvs -VMHostPhysicalNic (Get-VMHostNetworkAdapter -VMHost $vmh -Physical -Name $avnic) -Confirm:$false}
-                foreach ($svnic in $oldstbynics) {Add-VDSwitchPhysicalNetworkAdapter -DistributedSwitch $dvs -VMHostPhysicalNic (Get-VMHostNetworkAdapter -VMHost $vmh -Physical -Name $svnic) -Confirm:$false}
-                
+                    foreach ($avnic in $oldactivenics) {Add-VDSwitchPhysicalNetworkAdapter -DistributedSwitch $dvs -VMHostPhysicalNic (Get-VMHostNetworkAdapter -VMHost $vmh -Physical -Name $avnic) -Confirm:$false}
+                    foreach ($svnic in $oldstbynics) {Add-VDSwitchPhysicalNetworkAdapter -DistributedSwitch $dvs -VMHostPhysicalNic (Get-VMHostNetworkAdapter -VMHost $vmh -Physical -Name $svnic) -Confirm:$false}
+                }
+                                
             }
         }
 	} # End of process
@@ -204,19 +208,23 @@ function Move-VMHostToVSS {
                     $vss | New-VirtualPortGroup -Name $pg.Name -VLanId $pg.VlanConfiguration.VlanId -Confirm:$false | Out-Null}
                 elseif ($pg.VlanConfiguration.VlanType -eq "Trunk") {$vss | New-VirtualPortGroup -Name $pg.Name -VLanId 4095 -Confirm:$false | Out-Null}
                 else {$vss | New-VirtualPortGroup -Name $pg.Name -Confirm:$false | Out-Null}
+                $vspg = $vmh | Get-VirtualPortGroup -Name $pg.Name -Standard | ?{$_.Key -like "key-vim.host.PortGroup-*"}
                 Start-Sleep -Seconds 2
-                $vspg = $vmh | Get-VirtualSwitch -Name $vss -Standard | Get-VirtualPortGroup -Name $pg.Name -Standard | ?{$_.Key -like "key-vim.host.PortGroup-*"}
                 $pg | Get-NetworkAdapter | ?{$_.parent.VMHost -eq $vmh} | Set-NetworkAdapter -Portgroup $vspg -Confirm:$false | Out-Null
+                
+            }
+
             
-            }
-
-            $olduplinks = $dvs | Get-VMHostNetworkAdapter -VMHost $vmh
-            foreach ($uplink in $olduplinks) {
-                Remove-VDSwitchPhysicalNetworkAdapter -VMHostNetworkAdapter $uplink -Confirm:$false
-                Add-VirtualSwitchPhysicalNetworkAdapter -VMHostPhysicalNic $uplink -VirtualSwitch $vss -Confirm:$false
-            }
-
+            if ($dvs | Get-VM | ?{$_.VMHost -eq $vmh}) {
+                Write-Warning "$vmhost - VMs still remain on this host's DVS, please remediate manually."}
+            else {
+                $olduplinks = $dvs | Get-VMHostNetworkAdapter -VMHost $vmh
+                foreach ($uplink in $olduplinks) {
+                    Remove-VDSwitchPhysicalNetworkAdapter -VMHostNetworkAdapter $uplink -Confirm:$false
+                    Add-VirtualSwitchPhysicalNetworkAdapter -VMHostPhysicalNic $uplink -VirtualSwitch $vss -Confirm:$false
+                }
             }
         }
+    }
 	} # End of process
 } # End of function
