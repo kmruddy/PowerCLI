@@ -208,12 +208,14 @@ function Move-VMHostToVSS {
                     $vss | New-VirtualPortGroup -Name $pg.Name -VLanId $pg.VlanConfiguration.VlanId -Confirm:$false | Out-Null}
                 elseif ($pg.VlanConfiguration.VlanType -eq "Trunk") {$vss | New-VirtualPortGroup -Name $pg.Name -VLanId 4095 -Confirm:$false | Out-Null}
                 else {$vss | New-VirtualPortGroup -Name $pg.Name -Confirm:$false | Out-Null}
-                $vspg = $vmh | Get-VirtualPortGroup -Name $pg.Name -Standard | ?{$_.Key -like "key-vim.host.PortGroup-*"}
-                Start-Sleep -Seconds 2
-                $pg | Get-NetworkAdapter | ?{$_.parent.VMHost -eq $vmh} | Set-NetworkAdapter -Portgroup $vspg -Confirm:$false | Out-Null
-                
             }
 
+            Start-Sleep -Seconds 5
+
+            foreach ($pg in $pgs) {
+                $vspg = $vmh | Get-VirtualPortGroup -Name $pg.Name -Standard | ?{$_.Key -like "key-vim.host.PortGroup-*"}
+                $pg | Get-NetworkAdapter | ?{$_.parent.VMHost -eq $vmh} | Set-NetworkAdapter -Portgroup $vspg -Confirm:$false | Out-Null
+            }
             
             if ($dvs | Get-VM | ?{$_.VMHost -eq $vmh}) {
                 Write-Warning "$vmhost - VMs still remain on this host's DVS, please remediate manually."}
