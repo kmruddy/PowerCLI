@@ -61,7 +61,7 @@ function Move-VMHostToDVS {
                 foreach ($pg in $vspgs) {
                     $vdpg = $null
 
-                    if (!($dvs | Get-VDPortgroup -Name $pg.Name)) {
+                    if (!($dvs | Get-VDPortgroup -Name $pg.Name -ErrorAction SilentlyContinue)) {
                         if ($pg.VlanId -eq 4095) {
                             New-VDPortgroup -VDSwitch $dvs -Name $pg.Name -VlanTrunkRange "1-4094" -Confirm:$false | Out-Null}
                         else {New-VDPortgroup -VDSwitch $dvs -Name $pg.Name -VlanId $pg.vlanid -Confirm:$false | Out-Null}
