@@ -189,7 +189,7 @@ function Move-VMHostToVSS {
             Write-Warning "$vmhost - VMHost can't be found."}
         elseif (!$vmh) {Write-Warning "$vmhost - VMHost can't be found."}
         elseif ($dvs.NumUplinkPorts -lt 2) {Write-Warning "$vss - $vmhost has less than 2 uplinks."}
-        elseif ((Get-VirtualSwitch -Name $dvswitch -Standard -ErrorAction SilentlyContinue)) {Write-Warning "$dvswitch - a standard switch of this name already exists."}
+        elseif (($vmh | Get-VirtualSwitch -Name $dvswitch -Standard -ErrorAction SilentlyContinue)) {Write-Warning "$dvswitch - a standard switch of this name already exists."}
         elseif ($vmks) {Write-Warning "$dvswitch - Contains vmkernel ports for $vmhost"}
         else {
 
