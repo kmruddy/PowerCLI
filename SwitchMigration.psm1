@@ -15,6 +15,9 @@ function Move-VMHostToDVS {
 .PARAMETER vsswitch
 	The name of the standard virtual switch 
 
+.PARAMETER dvswitch
+	The name of the distributed virtual switch 
+
 .EXAMPLE
 	PS> Move-VMHostToDVS -vmhost vmhost01 -vss vSwitch1
 #>
@@ -24,7 +27,9 @@ function Move-VMHostToDVS {
         [Alias('Name')]
 		[String]$vmhost,
 		[Parameter(Mandatory=$true,Position=1)]
-		[String]$vsswitch
+		[String]$vsswitch,
+		[Parameter(Mandatory=$false,Position=2)]
+		[String]$dvswitch
   	)
 
 	Process {
@@ -43,15 +48,24 @@ function Move-VMHostToDVS {
             elseif (!$vmh) {Write-Warning "$vmhost - VMHost can't be found."}
             elseif ($vss.nic.count -lt 2) {Write-Warning "$vss - $vmhost has less than 2 uplinks."}
             else {
-            
                 $activenics = $vss.ExtensionData.Spec.Policy.NicTeaming.NicOrder.ActiveNic
                 $stbynics = $vss.ExtensionData.Spec.Policy.NicTeaming.NicOrder.StandbyNic
 
-                if (!(Get-VDSwitch -Name $vsswitch -ErrorAction SilentlyContinue)) {New-VDSwitch -Name $vss.Name -Mtu $vss.Mtu -NumUplinkPorts ($vss.nic.count) -Location ($vmh | Get-Datacenter) -Confirm:$false}
-            
-                $dvs = $vmh | Get-VDSwitch -Name $vsswitch -ErrorAction SilentlyContinue
-                if (!$dvs) {Add-VDSwitchVMHost -VMHost $vmh -VDSwitch (Get-VDSwitch -Name $vsswitch -ErrorAction SilentlyContinue) -Confirm:$false; $dvs = $vmh | Get-VDSwitch -Name $vsswitch -ErrorAction SilentlyContinue}
-                        
+                if (!(Get-VDSwitch -Name $vsswitch -ErrorAction SilentlyContinue) -and !$dvswitch) {
+                    New-VDSwitch -Name $vss.Name -Mtu $vss.Mtu -NumUplinkPorts ($vss.nic.count) -Location ($vmh | Get-Datacenter) -Confirm:$false
+                    $dvs = $vmh | Get-VDSwitch -Name $vsswitch -ErrorAction SilentlyContinue
+                    if (!$dvs) {Add-VDSwitchVMHost -VMHost $vmh -VDSwitch (Get-VDSwitch -Name $vsswitch -ErrorAction SilentlyContinue) -Confirm:$false; $dvs = $vmh | Get-VDSwitch -Name $vsswitch -ErrorAction SilentlyContinue}
+                    }
+                elseif ($dvswitch) {
+                    $dvs = $vmh | Get-VDSwitch -Name $dvswitch -ErrorAction SilentlyContinue
+                    if (!$dvs) {Add-VDSwitchVMHost -VMHost $vmh -VDSwitch (Get-VDSwitch -Name $dvswitch -ErrorAction SilentlyContinue) -Confirm:$false; $dvs = $vmh | Get-VDSwitch -Name $dvswitch -ErrorAction SilentlyContinue}
+                    }
+                else {
+                    $dvs = $vmh | Get-VDSwitch -Name $vsswitch -ErrorAction SilentlyContinue
+                    if (!$dvs) {Add-VDSwitchVMHost -VMHost $vmh -VDSwitch (Get-VDSwitch -Name $vsswitch -ErrorAction SilentlyContinue) -Confirm:$false; $dvs = $vmh | Get-VDSwitch -Name $vsswitch -ErrorAction SilentlyContinue}
+                    }
+
+                                        
                 if ($activenics.count -gt 1) {
                     Add-VDSwitchPhysicalNetworkAdapter -DistributedSwitch $dvs -VMHostPhysicalNic (Get-VMHostNetworkAdapter -VMHost $vmh -Physical -Name ($activenics | select -last 1)) -Confirm:$false}
                 elseif ($stbynics.count -gt 1) {Add-VDSwitchPhysicalNetworkAdapter -DistributedSwitch $dvs -VMHostPhysicalNic (Get-VMHostNetworkAdapter -VMHost $vmh -Physical -Name ($stbynics | select -last 1)) -Confirm:$false}
@@ -61,12 +75,20 @@ function Move-VMHostToDVS {
                 foreach ($pg in $vspgs) {
                     $vdpg = $null
 
-                    if (!($dvs | Get-VDPortgroup -Name $pg.Name -ErrorAction SilentlyContinue)) {
+                    if ((Get-VDPortgroup -Name $pg.Name -ErrorAction SilentlyContinue).VDSwitch -ne $dvs) {
+                        $pgname = $pg.Name + "_xfer"
+                        if ($pg.VlanId -eq 4095) {
+                            New-VDPortgroup -VDSwitch $dvs -Name $pgname -VlanTrunkRange "1-4094" -Confirm:$false | Out-Null}
+                        else {New-VDPortgroup -VDSwitch $dvs -Name $pgname -VlanId $pg.vlanid -Confirm:$false | Out-Null}
+                        $vdpg = $dvs | Get-VDPortgroup -Name $pgname
+                        }
+                    elseif (!($dvs | Get-VDPortgroup -Name $pg.Name -ErrorAction SilentlyContinue)) {
                         if ($pg.VlanId -eq 4095) {
                             New-VDPortgroup -VDSwitch $dvs -Name $pg.Name -VlanTrunkRange "1-4094" -Confirm:$false | Out-Null}
                         else {New-VDPortgroup -VDSwitch $dvs -Name $pg.Name -VlanId $pg.vlanid -Confirm:$false | Out-Null}
-                    }
-                    $vdpg = $dvs | Get-VDPortgroup -Name $pg.Name
+                        $vdpg = $dvs | Get-VDPortgroup -Name $pg.Name
+                        }
+                    else {$vdpg = $dvs | Get-VDPortgroup -Name $pg.Name}
                     $pg | Get-NetworkAdapter | Set-NetworkAdapter -Portgroup $vdpg -Confirm:$false | Out-Null
 
                 }
