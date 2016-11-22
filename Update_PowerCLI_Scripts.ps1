@@ -1,4 +1,4 @@
-function Get-PowerCLIInitializations {
+function Get-PowerCLIInitialization {
 <#  
 .SYNOPSIS  
     Gathers information on PowerShell resources which refer to the old PowerCLI Initialization Script
@@ -9,12 +9,12 @@ function Get-PowerCLIInitializations {
 .PARAMETER Path
     Directory path to be searched
 .EXAMPLE
-	Get-PowerCLIInitializations -Path C:\Temp\Scripts
-    Gathers information from the 'C:\Temp\Scripts\' directory 
+	Get-PowerCLIInitialization -Path C:\Temp\Scripts 
+	Gathers information from the 'C:\Temp\Scripts\' directory 
 #>
 [CmdletBinding()] 
 	param(
-		[Parameter(Mandatory=$false,Position=0,ValueFromPipelineByPropertyName=$true)]
+	[Parameter(Mandatory=$false,Position=0,ValueFromPipelineByPropertyName=$true)]
         [string]$Path
   	)
 
@@ -119,7 +119,7 @@ function Get-PowerCLISnapinUse {
     } # End of process
 } # End of function
 
-function Update-PowerCLIInitializations {
+function Update-PowerCLIInitialization {
 <#  
 .SYNOPSIS  
     Updates the information in PowerShell resources which refer to the old PowerCLI Initialization Script
@@ -130,12 +130,12 @@ function Update-PowerCLIInitializations {
 .PARAMETER Path
     Directory path to be searched
 .EXAMPLE
-	Update-PowerCLIInitializations -Path C:\Temp\Scripts
+    Update-PowerCLIInitialization -Path C:\Temp\Scripts
     Gathers information from the 'C:\Temp\Scripts\' directory 
 #>
-[CmdletBinding()] 
+[CmdletBinding(SupportsShouldProcess)] 
 	param(
-		[Parameter(Mandatory=$false,Position=0,ValueFromPipelineByPropertyName=$true)]
+	[Parameter(Mandatory=$false,Position=0,ValueFromPipelineByPropertyName=$true)]
         [string]$Path
   	)
 
