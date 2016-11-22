@@ -142,7 +142,7 @@ function Update-PowerCLIInitialization {
 	Process {
 
         #Gather scripts using ps1 extension and have a string matching "\VMware\Infrastructure\vSphere PowerCLI\Scripts\Initialize-PowerCLIEnvironment.ps1"
-        $scripts = Get-PowerCLIInitializations -Path $Path
+        $scripts = Get-PowerCLIInitialization -Path $Path
 
         #Check to see if any scripts are found
         if (!$scripts) {Write-Warning "No PowerShell resources found requiring update within $Path"}
