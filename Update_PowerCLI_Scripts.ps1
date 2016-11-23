@@ -160,3 +160,69 @@ function Update-PowerCLIInitialization {
 
     } # End of process
 } # End of function
+
+function Update-PowerCLISnapinUse {
+<#  
+.SYNOPSIS  
+    Updates the information in PowerShell resources which refer to the old PowerCLI Initialization Script
+.DESCRIPTION 
+    Will update scripts, modules, etc refering to the old vSphere PowerCLI directory
+.NOTES  
+    Author:  Kyle Ruddy, @kmruddy, thatcouldbeaproblem.com
+.PARAMETER Path
+    Directory path to be searched
+.EXAMPLE
+	Update-PowerCLISnapinUse -Path C:\Temp\Scripts
+    Gathers information from the 'C:\Temp\Scripts\' directory 
+#>
+[CmdletBinding(SupportsShouldProcess)] 
+	param(
+		[Parameter(Mandatory=$false,Position=0,ValueFromPipelineByPropertyName=$true)]
+        [string]$Path
+  	)
+
+	Process {
+
+        #Gather scripts using ps1 extension and have a string matching "\VMware\Infrastructure\vSphere PowerCLI\Scripts\Initialize-PowerCLIEnvironment.ps1"
+        $scripts = Get-PowerCLISnapinUse -Path $Path | select -Unique FullPath
+
+        #Check to see if any scripts are found
+        if (!$scripts) {Write-Warning "No PowerShell resources found requiring update within $Path"}
+        else {
+
+            foreach ($script in $scripts) {
+
+                #Finds and updates the string to import the PowerCLI modules
+                $scriptcontent = (Get-Content $script.FullPath)
+                
+                $newoutput = @()
+                [int]$counter = 0
+                foreach ($line in $scriptcontent) {
+                    
+                    #Checks to see if the line includes adding in the VMware PSSnapins and, if so, comments it out
+                    #On first discovery, adds the invokation of get-module for the PowerCLI modules
+                    if ($line -like "Add-PSSnapin*VMware*" -and $counter -eq 0) {
+
+                        $newoutput += "Get-Module -ListAvailable VMware* | Import-Module"
+                        $newoutput += $line.Insert(0,'#')
+                        $counter = 1
+
+                    }
+                    elseif ($line -like "Add-PSSnapin*VMware*" -and $counter -eq 1) {
+
+                        $newoutput += $line.Insert(0,'#')
+
+                    }
+                    else {$newoutput += $line}
+
+                }
+
+                #Updates the script
+                Set-Content -Value $newoutput -Path $script.FullPath
+
+            }
+
+        }
+        
+    } # End of process
+} # End of function
