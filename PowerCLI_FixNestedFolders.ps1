@@ -70,7 +70,9 @@ if ($pcliFolder) {
 
                 # Obtaining and storing the child items to a variable, then copying the items to the parent folder's nested folder
                 $nestFolder = $tempDir | Get-ChildItem -Directory
-                $nestFolder | Get-ChildItem | Copy-Item -Destination ($dir + "\" + $nestFolder.Name) -ErrorAction Stop
+                foreach ($nestDir in $nestFolder) {
+                    $nestDir | Get-ChildItem | Copy-Item -Destination ($dir + "\" + $nestDir.Name) -ErrorAction Stop
+                }
 
             }
 
