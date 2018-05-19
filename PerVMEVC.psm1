@@ -147,7 +147,7 @@ function Set-VMEvcMode {
         $evVM = @()
         $updateVM = @()
 
-        if ($name -is [string] -or ) {$evVM += Get-VM -Name $Name -ErrorAction SilentlyContinue}
+        if ($name -is [string]) {$evVM += Get-VM -Name $Name -ErrorAction SilentlyContinue}
         elseif ($name -is [array]) {
 
             if ($name[0] -is [string]) {
