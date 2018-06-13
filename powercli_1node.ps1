@@ -6,7 +6,7 @@
 #  - PowerCLI 6.5.4 or newer
 
 # Set details for SDDC
-$oauthToken = "1294a022-7eae-46e6-8c47-0dc2e5c58501"
+$oauthToken = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxx"
 $sddcName = "PowerCLI-1Node-SDDC"
 $hostCount = "1"
 $awsRegion = "US_WEST_2"
