@@ -1,9 +1,19 @@
-# Author: Kyle Ruddy
-# Product: VMware Cloud on AWS
-# Description: Script which can be used to automate the process of adding new users to a specified VMware Cloud on AWS Organization
-# Requirements:
-#  - PowerShell 3.x or newer
-
+<#  
+.SYNOPSIS  
+    Takes email address input in order to create VMware Cloud on AWS invites for the desired Organization
+.DESCRIPTION 
+    Script which can be used to automate the process of adding new users to a specified VMware Cloud on AWS Organization
+.NOTES  
+    Author:  Kyle Ruddy, @kmruddy, kmruddy.com
+.PARAMETER newUserEmail
+	Plain text email address or array of email addresses
+.PARAMETER roleName
+	Desired role name of the new users, default is Organization Member
+.EXAMPLE
+   PS > ./VMWonAWS_InviteUsers.ps1 -newUserEmail 'testuser@vmware.com'
+.EXAMPLE 
+   PS > ./VMWonAWS_InviteUsers.ps1 -newUserEmail $arrayOfEmailAddresses
+#>
 [CmdletBinding(SupportsShouldProcess=$True)] 
     param (
 
@@ -22,6 +32,7 @@
     $inviteReport = @()
     $userEmail = @()
 
+    # Email Validation Testing
     if ($newUserEmail -is [array]) {
         foreach ($email in $newUserEmail) {
             try {
@@ -42,10 +53,11 @@
     }
     
 	if ($userEmail.Count -eq 0) {
-        Write-Error "No valid email addresses found."
+        Write-Warning "No valid email addresses found."
 		Break
     }
 
+    # Validation and translation of the role name to the role ID
     if ($roleName -eq 'Organization Member') {
         $orgRoleNames = @("org_member")
     }
@@ -56,6 +68,7 @@
         $orgRoleNames = @("support_user")
     }
 
+    # Creating custom objects to start building out the body input
     $bodyObj = new-object -TypeName System.Object      
     $SvcRoleNames = @("vmc-user:full")
     $SvcDefinitionLink = '/csp/gateway/slc/api/definitions/external/ybUdoTC05kYFC9ZG560kpsn0I8M_'
@@ -67,10 +80,12 @@
     $bodyObj | Add-Member -Name 'usernames' -MemberType Noteproperty -Value $userEmail
     $body = $bodyObj | ConvertTo-Json -Depth 100
 
+    # Connecting to the REST API service for authentication and then to perform the POST method 
     $connection = Invoke-WebRequest -Uri "https://console.cloud.vmware.com/csp/gateway/am/api/auth/api-tokens/authorize?refresh_token=$oauthToken" -Method Post
     $accesskey = ($connection.content | Convertfrom-json).access_token
     $inviteUsers = Invoke-WebRequest -Uri "https://console.cloud.vmware.com/csp/gateway/am/api/orgs/$orgID/invitations" -headers @{"csp-auth-token"="$accesskey"} -Method Post -Body $body -ContentType "application/json"
 
+    # Outputting the successful invite which was just created
     $orgInviteRefResponse = Invoke-WebRequest -Uri "https://console.cloud.vmware.com/csp/gateway/am/api/orgs/$orgid/invitations" -headers @{"csp-auth-token"="$accessKey"} -Method Get
     if ($orgInviteRefResponse) {
         $orgInviteRefObject = $orgInviteRefResponse | ConvertFrom-Json
