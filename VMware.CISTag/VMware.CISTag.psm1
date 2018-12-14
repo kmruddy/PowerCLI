@@ -326,21 +326,21 @@ function New-CISTagAssignment {
             foreach ($tId in $TagId) {
                 $tagIdList.add($tId) | Out-Null
             }
-            $tagAssocSvc.attach_multiple_tags_to_object($objObject,$tagIdList)
+            $tagAssocSvc.attach_multiple_tags_to_object($objObject,$tagIdList) | Out-Null
         } elseif ($TagId -isnot [array] -and $ObjectId -is [array]) {
-            $objList = $tagAssocSvc.help.attach_tag_to_multiple_objects.create()
+            $objList = $tagAssocSvc.help.attach_tag_to_multiple_objects.object_ids.create()
             foreach ($obj in $ObjectId) {
-                $objObject = $tagAssocSvc.help.attach_tag_to_multiple_objects.element.create()
-                $objObject.id = $ObjectId
+                $objObject = $tagAssocSvc.help.attach_tag_to_multiple_objects.object_ids.element.create()
+                $objObject.id = $obj
                 $objObject.type = $ObjectType
                 $objList.add($objObject) | Out-Null
             }
-            $tagAssocSvc.attach_tag_to_multiple_objects($TagId,$objList)
+            $tagAssocSvc.attach_tag_to_multiple_objects($TagId,$objList) | Out-Null
         } elseif ($TagId -isnot [array] -and $ObjectId -isnot [array]) {
             $objObject = $tagAssocSvc.help.attach.object_id.create()
             $objObject.id = $ObjectId
             $objObject.type = $ObjectType
-            $tagAssocSvc.attach($TagId,$objObject)
+            $tagAssocSvc.attach($TagId,$objObject) | Out-Null
         } else {Write-Output "Multiple tags with multiple objects are not a supported call."}
 
     }
